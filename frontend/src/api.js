@@ -1,11 +1,8 @@
+
 import axios from "axios";
 
 const api = axios.create({
-<<<<<<< HEAD
   baseURL: import.meta.env.VITE_API_URL || "/api",
-=======
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
->>>>>>> 8b4b0c78174a7dcc72d1491f6ea5380f3a883eb6
   withCredentials: false,
 });
 
@@ -18,7 +15,7 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // ✅ Important Fix for File Upload
+    // Important fix for file uploads
     if (config.data instanceof FormData) {
       delete config.headers["Content-Type"];
     }
@@ -37,7 +34,7 @@ api.interceptors.response.use(
 
     // Auto logout only if unauthorized
     if (error.response?.status === 401 && !isAuthRoute) {
-      localStorage.removeItem("token"); 
+      localStorage.removeItem("token");
       localStorage.removeItem("user");
       window.location.href = "/login";
     }
