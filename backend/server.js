@@ -16,6 +16,7 @@ import applicationRoutes from './routes/applicationRoutes.js'
 import analyticsRoutes from './routes/Analyticsroutes.js'
 import notificationRoutes from './routes/Notificationroutes.js'
 import studentRoutes from './routes/studentRoutes.js'
+import companyQuestionRoutes from './routes/companyQuestionRoutes.js'
 
 import errorHandler from './middleware/errorHandler.js'
 
@@ -81,8 +82,8 @@ app.use(
   express.static(path.join(__dirname, 'uploads'))
 )
 
-// MongoDB
-connectDB()
+// Do not accept API traffic until persistence is ready.
+await connectDB()
 
 // Routes
 app.use('/api/auth', authRoutes)
@@ -92,6 +93,7 @@ app.use('/api/applications', applicationRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/students', studentRoutes)
+app.use('/api/company-questions', companyQuestionRoutes)
 
 // Health route
 app.get('/', (req, res) => {

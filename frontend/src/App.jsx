@@ -17,6 +17,8 @@ import ApplicantsPage   from './pages/applications/ApplicantsPage'
 import AnalyticsPage    from './pages/analytics/AnalyticsPage'
 import NotificationsPage from './pages/notifications/NotificationsPage'
 import VerifyEmailPage from './pages/auth/VerifyEmailPage'
+import CompanyQuestionsPage from './pages/questions/CompanyQuestionsPage'
+import DashboardLayout from './components/layout/DashboardLayout'
 
 
 const ROLE_HOME = {
@@ -86,6 +88,9 @@ export default function App() {
           <Route path="/tpo-dashboard/upload" element={
             <PrivateRoute><RoleRoute roles={['tpo']}><TPODashboard /></RoleRoute></PrivateRoute>
           } />
+          <Route path="/tpo-dashboard/questions" element={
+            <PrivateRoute><RoleRoute roles={['tpo']}><TPODashboard /></RoleRoute></PrivateRoute>
+          } />
 
           {/* ── Recruiter ── */}
           <Route path="/recruiter-dashboard" element={
@@ -130,6 +135,11 @@ export default function App() {
           } />
           <Route path="/notifications" element={
             <PrivateRoute><NotificationsPage /></PrivateRoute>
+          } />
+          <Route path="/previous-year-questions" element={
+            <PrivateRoute>
+              <DashboardLayout><CompanyQuestionsPage /></DashboardLayout>
+            </PrivateRoute>
           } />
           <Route path="/prepare" element={<PreparePage />} />
           

@@ -3,6 +3,7 @@ import { Application } from '../models/Application.js'
 import { Notification } from '../models/Notification.js'
 import { User } from '../models/User.js'
 import { sendJobNotificationEmail } from '../utils/emailService.js'   // ← ADD THIS LINE
+import { closeExpiredActiveJobs } from '../utils/jobDeadline.js'
 
 // Helper: notify all eligible students when a job is posted
 const notifyEligibleStudents = async (job) => {
@@ -61,6 +62,7 @@ const notifyEligibleStudents = async (job) => {
 // @access  Private
 export const getJobs = async (req, res, next) => {
   try {
+    await closeExpiredActiveJobs()
     const { status, type, branch, page = 1, limit = 12, search } = req.query
 
     const filter = {}
@@ -68,9 +70,10 @@ export const getJobs = async (req, res, next) => {
     if (type)   filter.type = type
     if (branch) filter['eligibility.branches'] = branch
     if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       filter.$or = [
-        { title:   { $regex: search, $options: 'i' } },
-        { company: { $regex: search, $options: 'i' } },
+        { title:   { $regex: safeSearch, $options: 'i' } },
+        { company: { $regex: safeSearch, $options: 'i' } },
       ]
     }
 
@@ -78,13 +81,14 @@ export const getJobs = async (req, res, next) => {
       filter.status = { $in: ['active', 'upcoming'] }
     }
 
-    const jobs = await Job.find(filter)
-      .populate('postedBy', 'name companyName')
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-
-    const total = await Job.countDocuments(filter)
+    const [jobs, total] = await Promise.all([
+      Job.find(filter)
+        .populate('postedBy', 'name companyName')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(Number(limit)),
+      Job.countDocuments(filter),
+    ])
 
     if (req.user.role === 'student') {
       const jobIds = jobs.map(j => j._id)
@@ -109,7 +113,22 @@ export const getJobs = async (req, res, next) => {
       })
     }
 
-    res.json({ jobs, total, page: Number(page), pages: Math.ceil(total / limit) })
+    const applicantCounts = await Application.aggregate([
+      { $match: { job: { $in: jobs.map(job => job._id) } } },
+      { $group: { _id: '$job', count: { $sum: 1 } } },
+    ])
+    const applicantCountByJob = new Map(applicantCounts.map(item => [item._id.toString(), item.count]))
+    const jobsWithApplicantCounts = jobs.map(job => ({
+      ...job.toObject(),
+      applicantCount: applicantCountByJob.get(job._id.toString()) || 0,
+    }))
+
+    res.json({
+      jobs: jobsWithApplicantCounts,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit),
+    })
   } catch (err) {
     next(err)
   }
@@ -120,6 +139,7 @@ export const getJobs = async (req, res, next) => {
 // @access  Private
 export const getJob = async (req, res, next) => {
   try {
+    await closeExpiredActiveJobs()
     const job = await Job.findById(req.params.id)
       .populate('postedBy', 'name companyName email')
     if (!job) return res.status(404).json({ message: 'Job not found' })
@@ -142,7 +162,11 @@ export const getJob = async (req, res, next) => {
 // @access  TPO + Recruiter + Admin
 export const createJob = async (req, res, next) => {
   try {
-    const job = await Job.create({ ...req.body, postedBy: req.user._id })
+    const job = await Job.create({
+      ...req.body,
+      ...(req.file && { logo: req.file.path }),
+      postedBy: req.user._id,
+    })
     await notifyEligibleStudents(job)   // sends both in-app + email now
     res.status(201).json({ job, message: 'Job posted successfully' })
   } catch (err) {
@@ -162,7 +186,10 @@ export const updateJob = async (req, res, next) => {
       return res.status(403).json({ message: 'Not authorized to update this job' })
     }
 
-    const updated = await Job.findByIdAndUpdate(req.params.id, req.body, {
+    const updates = { ...req.body }
+    if (req.file) updates.logo = req.file.path
+
+    const updated = await Job.findByIdAndUpdate(req.params.id, updates, {
       new: true, runValidators: true,
     })
     res.json({ job: updated, message: 'Job updated successfully' })

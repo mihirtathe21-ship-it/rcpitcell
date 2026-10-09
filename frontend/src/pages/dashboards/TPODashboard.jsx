@@ -1,15 +1,44 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  GraduationCap, Briefcase, Upload, BarChart2,
+  GraduationCap, Briefcase, Upload, BookOpen,
   Search, SlidersHorizontal, RefreshCw, CheckCircle2,
   Download, FileSpreadsheet, Users, Award,
-  UserCheck, X, Plus, AlertCircle
+  UserCheck, X, Plus, AlertCircle, Activity, ArrowRight,
+  CalendarDays, ChevronRight, Clock3, ImagePlus,
+  ShieldCheck, Sparkles, Bell,
 } from 'lucide-react'
 import DashboardLayout from '../../components/layout/DashboardLayout'
+import { useAuth } from '../../context/AuthContext'
 import api from '../../api'
 import toast from 'react-hot-toast'
 import StudentProfileModal from '../../components/ui/StudentProfileModal'
+import CompanyQuestionsPage from '../questions/CompanyQuestionsPage'
+import CompanyLogo from '../../components/ui/CompanyLogo'
+import { getDaysUntilDeadline } from '../../utils/jobDeadline'
+
+const formatDate = date => {
+  if (!date) return '—'
+  const parsed = new Date(date)
+  return Number.isNaN(parsed.getTime())
+    ? '—'
+    : parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+const getAcademicYear = date => {
+  const year = date.getFullYear()
+  const start = date.getMonth() >= 5 ? year : year - 1
+  return `${start}-${String(start + 1).slice(-2)}`
+}
+
+const APPLICATION_STATUS_STYLE = {
+  applied: 'bg-blue-50 text-blue-700',
+  shortlisted: 'bg-amber-50 text-amber-700',
+  interview: 'bg-violet-50 text-violet-700',
+  selected: 'bg-emerald-50 text-emerald-700',
+  rejected: 'bg-rose-50 text-rose-700',
+  withdrawn: 'bg-slate-100 text-slate-600',
+}
 
 const DOMAINS = [
   'Full Stack Development',
@@ -37,86 +66,254 @@ const DOMAINS = [
 // HOME TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function HomeTab() {
-  const [summary, setSummary]       = useState(null)
+  const { user, updateUser } = useAuth()
+  const [summary, setSummary] = useState(null)
   const [recentApps, setRecentApps] = useState([])
-  const [loading, setLoading]       = useState(true)
+  const [recentDrives, setRecentDrives] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoPreview, setPhotoPreview] = useState(user?.photo || '')
 
   useEffect(() => {
-    Promise.all([
-      api.get('/analytics/summary').catch(() => ({ data: {} })),
-      api.get('/applications', { params: { limit: 6 } }).catch(() => ({ data: { applications: [] } })),
-    ]).then(([s, a]) => {
-      setSummary(s.data)
-      setRecentApps(a.data.applications || [])
-    }).finally(() => setLoading(false))
+    setPhotoPreview(user?.photo || '')
+  }, [user?.photo])
+
+  useEffect(() => () => {
+    if (photoPreview.startsWith('blob:')) URL.revokeObjectURL(photoPreview)
+  }, [photoPreview])
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadDashboard = async () => {
+      setLoading(true)
+      const results = await Promise.allSettled([
+        api.get('/analytics/summary'),
+        api.get('/applications', { params: { limit: 6 } }),
+        api.get('/jobs', { params: { limit: 6 } }),
+      ])
+
+      if (!mounted) return
+      if (results[0].status === 'fulfilled') setSummary(results[0].value.data)
+      else toast.error('Could not load placement summary.')
+      if (results[1].status === 'fulfilled') setRecentApps(results[1].value.data.applications || [])
+      else toast.error('Could not load recent applications.')
+      if (results[2].status === 'fulfilled') setRecentDrives(results[2].value.data.jobs || [])
+      else toast.error('Could not load recent drives.')
+      setLoading(false)
+    }
+
+    loadDashboard()
+    return () => { mounted = false }
   }, [])
 
+  const handlePhotoChange = async event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Choose a JPG, PNG, or WEBP profile photo.')
+      event.target.value = ''
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Profile photo must be smaller than 2 MB.')
+      event.target.value = ''
+      return
+    }
+
+    const localPreview = URL.createObjectURL(file)
+    setPhotoPreview(localPreview)
+    setUploadingPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('photo', file)
+      const { data } = await api.put('/users/profile', formData)
+      updateUser(data.user)
+      toast.success('TPO profile photo updated.')
+    } catch (error) {
+      setPhotoPreview(user?.photo || '')
+      toast.error(error.response?.data?.message || 'Could not update your profile photo.')
+    } finally {
+      URL.revokeObjectURL(localPreview)
+      setUploadingPhoto(false)
+      event.target.value = ''
+    }
+  }
+
+  const visibleDrives = recentDrives.filter(job =>
+    `${job.company || ''} ${job.title || ''}`.toLowerCase().includes(search.trim().toLowerCase())
+  )
+  const stats = [
+    { label: 'Registered students', value: summary?.totalStudents, icon: GraduationCap, tone: 'blue', to: '/tpo-dashboard/students' },
+    { label: 'Active drives', value: summary?.activeJobs, icon: Briefcase, tone: 'emerald', to: '/jobs' },
+    { label: 'Applications', value: summary?.totalApplications, icon: FileSpreadsheet, tone: 'violet', to: '/applications' },
+    { label: 'Selected applications', value: summary?.selectedApplications, icon: Award, tone: 'amber', to: '/analytics' },
+  ]
+  const quickActions = [
+    { label: 'Post a placement drive', detail: 'Create a new company opportunity', icon: Briefcase, to: '/jobs/new', theme: 'blue' },
+    { label: 'Find students', detail: 'Filter and shortlist candidates', icon: GraduationCap, to: '/tpo-dashboard/students', theme: 'emerald' },
+    { label: 'Upload student data', detail: 'Import a student CSV or workbook', icon: Upload, to: '/tpo-dashboard/upload', theme: 'violet' },
+    { label: 'Previous-year questions', detail: 'Manage company interview questions', icon: BookOpen, to: '/tpo-dashboard/questions', theme: 'amber' },
+  ]
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-[#1a2744]">TPO Dashboard</h1>
-        <p className="text-slate-400 text-sm mt-1">Manage placement drives, students &amp; shortlisting</p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Students', val: summary?.totalStudents        ?? '—', icon: GraduationCap,   c: 'text-blue-600',    b: 'bg-blue-50',    border: 'border-blue-100' },
-          { label: 'Active Drives',  val: summary?.activeJobs           ?? '—', icon: Briefcase,       c: 'text-emerald-600', b: 'bg-emerald-50', border: 'border-emerald-100' },
-          { label: 'Applications',   val: summary?.totalApplications    ?? '—', icon: FileSpreadsheet, c: 'text-violet-600',  b: 'bg-violet-50',  border: 'border-violet-100' },
-          { label: 'Placed',         val: summary?.selectedApplications ?? '—', icon: Award,           c: 'text-amber-600',   b: 'bg-amber-50',   border: 'border-amber-100' },
-        ].map(s => (
-          <div key={s.label} className={`bg-white border ${s.border} rounded-2xl p-5 shadow-sm`}>
-            <div className={`w-9 h-9 ${s.b} rounded-xl flex items-center justify-center mb-3`}>
-              <s.icon className={`w-4.5 h-4.5 ${s.c}`} />
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+        <label className="relative min-w-[220px] flex-1 sm:max-w-xl">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search recent drives..." aria-label="Search recent placement drives" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-300 focus:bg-white focus:ring-4 focus:ring-blue-50" />
+        </label>
+        <div className="flex items-center gap-3">
+          <span className="hidden items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 sm:inline-flex">
+            <CalendarDays className="h-4 w-4 text-blue-600" /> Academic year {getAcademicYear(new Date())}
+          </span>
+          <Link to="/notifications" aria-label="Open notifications" className="rounded-xl border border-slate-200 p-2.5 text-slate-500 transition hover:bg-blue-50 hover:text-blue-700">
+            <Bell className="h-4 w-4" />
+          </Link>
+          <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-blue-100 bg-blue-50 text-sm font-bold text-blue-700">
+              {user?.name?.trim()?.charAt(0)?.toUpperCase() || 'T'}
+              {photoPreview && <img src={photoPreview} alt="" className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.style.display = 'none' }} />}
             </div>
-            <p className="text-2xl font-bold text-[#1a2744]">{loading ? '—' : s.val}</p>
-            <p className="text-xs text-slate-400 mt-1 font-medium">{s.label}</p>
+            <div className="hidden max-w-40 sm:block">
+              <p className="truncate text-xs font-semibold text-slate-800">{user?.name || 'Placement officer'}</p>
+              <p className="text-[11px] text-slate-500">Training &amp; Placement</p>
+            </div>
+            <label title="Upload profile photo" className={`ml-1 cursor-pointer rounded-lg p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-700 ${uploadingPhoto ? 'animate-pulse' : ''}`}>
+              <ImagePlus className="h-4 w-4" />
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} disabled={uploadingPhoto} className="sr-only" aria-label="Upload TPO profile photo" />
+            </label>
           </div>
-        ))}
-      </div>
+        </div>
+      </header>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Post Drive',    icon: Plus,          to: '/jobs/new',               c: 'text-blue-600',    b: 'bg-blue-50',    border: 'border-blue-200',   hover: 'hover:bg-blue-100' },
-          { label: 'Find Students', icon: GraduationCap, to: '/tpo-dashboard/students', c: 'text-emerald-600', b: 'bg-emerald-50', border: 'border-emerald-200', hover: 'hover:bg-emerald-100' },
-          { label: 'Upload Data',   icon: Upload,        to: '/tpo-dashboard/upload',   c: 'text-violet-600',  b: 'bg-violet-50',  border: 'border-violet-200',  hover: 'hover:bg-violet-100' },
-          { label: 'Analytics',     icon: BarChart2,     to: '/analytics',              c: 'text-amber-600',   b: 'bg-amber-50',   border: 'border-amber-200',   hover: 'hover:bg-amber-100' },
-        ].map(a => (
-          <Link key={a.label} to={a.to}
-            className={`flex flex-col items-center gap-2.5 py-5 px-3 border ${a.border} ${a.b} ${a.hover} rounded-2xl transition-all shadow-sm`}>
-            <a.icon className={`w-5 h-5 ${a.c}`} />
-            <span className={`text-xs ${a.c} font-semibold`}>{a.label}</span>
+      <section className="relative isolate overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-r from-white via-blue-50 to-indigo-50 px-5 py-6 shadow-sm sm:px-7 sm:py-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-8 -top-14 -z-10 h-56 w-56 rounded-full border-[32px] border-white/70" />
+        <div aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 -z-10 h-24 w-1/3 bg-gradient-to-l from-blue-100/70 to-transparent" />
+        <div className="relative flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700"><ShieldCheck className="h-3.5 w-3.5" /> Training &amp; Placement Office</p>
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#142445] sm:text-3xl">TPO Dashboard</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">Welcome{user?.name ? `, ${user.name.trim().split(/\s+/)[0]}` : ''}. Keep placement drives, student applications, and recruitment activity moving from one place.</p>
+          </div>
+          <Link to="/jobs/new" className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/15 transition hover:-translate-y-0.5 hover:bg-blue-700">
+            <Plus className="h-4 w-4" /> Post a drive <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="Placement overview">
+        {stats.map(stat => (
+          <Link key={stat.label} to={stat.to} className={`group rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${
+            stat.tone === 'blue' ? 'border-blue-100' :
+            stat.tone === 'emerald' ? 'border-emerald-100' :
+            stat.tone === 'violet' ? 'border-violet-100' : 'border-amber-100'
+          }`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                stat.tone === 'blue' ? 'bg-blue-50 text-blue-700' :
+                stat.tone === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
+                stat.tone === 'violet' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
+              }`}><stat.icon className="h-5 w-5" /></div>
+              <ChevronRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
+            </div>
+            <p className="mt-4 text-2xl font-bold tracking-tight text-[#142445]">{loading || stat.value == null ? '—' : stat.value.toLocaleString()}</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">{stat.label}</p>
           </Link>
         ))}
-      </div>
+      </section>
 
-      {/* Recent Applications */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-        <h2 className="font-semibold text-[#1a2744] text-sm mb-4">Recent Applications</h2>
-        {loading ? (
-          [...Array(4)].map((_, i) => <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse mb-2" />)
-        ) : recentApps.length === 0 ? (
-          <p className="text-slate-300 text-sm text-center py-8">No applications yet</p>
-        ) : recentApps.map(app => (
-          <div key={app._id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-all">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 shrink-0">
-              {app.student?.name?.charAt(0) || '?'}
+      <section className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Briefcase className="h-4 w-4" /></span>
+              <div><h2 className="text-sm font-semibold text-[#142445]">Recent recruitment drives</h2><p className="mt-0.5 text-xs text-slate-500">Latest drives saved in the system</p></div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] text-[#1a2744] font-medium truncate">{app.student?.name || 'Unknown'}</p>
-              <p className="text-[11px] text-slate-400 truncate">{app.job?.title} · {app.job?.company}</p>
-            </div>
-            <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold shrink-0 ${
-              app.status === 'selected'    ? 'bg-emerald-100 text-emerald-700' :
-              app.status === 'shortlisted' ? 'bg-amber-100   text-amber-700'   :
-              app.status === 'rejected'    ? 'bg-red-100     text-red-700'     :
-              'bg-slate-100 text-slate-500'
-            }`}>{app.status}</span>
+            <Link to="/jobs" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:text-blue-900">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
           </div>
-        ))}
-      </div>
+          {loading ? (
+            <div className="space-y-3 p-5">{[1, 2, 3, 4].map(item => <div key={item} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div>
+          ) : visibleDrives.length === 0 ? (
+            <div className="px-5 py-12 text-center"><Briefcase className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 text-sm font-medium text-slate-700">{search ? 'No matching drives' : 'No placement drives yet'}</p><p className="mt-1 text-xs text-slate-500">{search ? 'Try a different company or role.' : 'Post the first drive to start building your placement pipeline.'}</p></div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {visibleDrives.slice(0, 6).map(job => {
+                const daysLeft = getDaysUntilDeadline(job.lastDateToApply)
+                const status = job.status === 'active' && daysLeft !== null && daysLeft < 0 ? 'closed' : job.status
+                return (
+                  <div key={job._id} className="flex flex-wrap items-center gap-3 px-5 py-3.5 transition hover:bg-blue-50/30">
+                    <Link to={`/jobs/${job._id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                      <CompanyLogo src={job.logo} company={job.company} className="h-10 w-10 shrink-0 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-700" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-slate-800">{job.company}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-slate-500">{job.title} · {job.location || 'On campus'}</span>
+                      </span>
+                    </Link>
+                    <span className="text-xs font-medium text-slate-600">{job.package || job.stipend || 'Package not listed'}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${
+                      status === 'active' ? 'bg-emerald-50 text-emerald-700' :
+                      status === 'upcoming' ? 'bg-violet-50 text-violet-700' :
+                      status === 'cancelled' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
+                    }`}>{status}</span>
+                    <Link to={`/jobs/${job._id}/applicants`} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-blue-700" aria-label={`${job.applicantCount || 0} applicants for ${job.company}`}><Users className="h-3.5 w-3.5 text-slate-400" />{job.applicantCount || 0}</Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700"><Activity className="h-4 w-4" /></span>
+              <div><h2 className="text-sm font-semibold text-[#142445]">Application activity</h2><p className="mt-0.5 text-xs text-slate-500">Latest student submissions</p></div>
+            </div>
+            <Link to="/applications" aria-label="View all applications" className="rounded-lg p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-700"><ArrowRight className="h-4 w-4" /></Link>
+          </div>
+          {loading ? (
+            <div className="space-y-3">{[1, 2, 3, 4].map(item => <div key={item} className="h-14 animate-pulse rounded-lg bg-slate-100" />)}</div>
+          ) : recentApps.length === 0 ? (
+            <div className="rounded-xl bg-slate-50 px-4 py-10 text-center"><Users className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-medium text-slate-700">No applications yet</p><p className="mt-1 text-xs text-slate-500">Applications will appear here as students apply.</p></div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {recentApps.slice(0, 5).map(app => (
+                <div key={app._id} className="flex items-center gap-3 py-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-xs font-bold text-blue-700">{app.student?.name?.trim()?.charAt(0)?.toUpperCase() || '?'}</div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-slate-800">{app.student?.name || 'Unknown student'}</p><p className="mt-0.5 truncate text-[11px] text-slate-500">{app.job?.company || 'Placement drive'} · {app.job?.title || 'Application'}</p></div>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold capitalize ${APPLICATION_STATUS_STYLE[app.status] || 'bg-slate-100 text-slate-600'}`}>{app.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <Link to="/applications" className="mt-2 flex items-center justify-center gap-1 border-t border-slate-100 pt-3 text-xs font-semibold text-blue-700 hover:text-blue-900">Open applications <ArrowRight className="h-3.5 w-3.5" /></Link>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center gap-2"><Sparkles className="h-4 w-4 text-blue-600" /><h2 className="text-sm font-semibold text-[#142445]">Placement office tools</h2></div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {quickActions.map(action => (
+            <Link key={action.label} to={action.to} className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                action.theme === 'blue' ? 'bg-blue-50 text-blue-700' :
+                action.theme === 'emerald' ? 'bg-emerald-50 text-emerald-700' :
+                action.theme === 'violet' ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
+              }`}><action.icon className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{action.label}</span><span className="mt-1 block truncate text-[10px] text-slate-500">{action.detail}</span></span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <footer className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-blue-600" /> PlaceNext · Training &amp; Placement Office</span>
+        <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> Dashboard overview</span>
+      </footer>
     </div>
   )
 }
@@ -789,13 +986,14 @@ export default function TPODashboard() {
     switch (location.pathname) {
       case '/tpo-dashboard/upload':   return <UploadTab />
       case '/tpo-dashboard/students': return <FindStudentsTab />
+      case '/tpo-dashboard/questions': return <CompanyQuestionsPage manageOnly />
       default:                        return <HomeTab />
     }
   }
 
   return (
     <DashboardLayout>
-      <div className="p-6 lg:p-8 max-w-6xl mx-auto">
+      <div className={location.pathname === '/tpo-dashboard' ? 'mx-auto w-full max-w-none p-4 sm:p-5 lg:p-6' : 'mx-auto max-w-6xl p-6 lg:p-8'}>
         {renderTab()}
       </div>
     </DashboardLayout>

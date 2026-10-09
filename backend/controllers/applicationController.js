@@ -2,6 +2,7 @@ import { Application } from '../models/Application.js'
 import { Job } from '../models/Job.js'
 import { Notification } from '../models/Notification.js'
 import { User } from '../models/User.js'
+import { hasDeadlinePassed } from '../utils/jobDeadline.js'
 
 const STATUS_MESSAGES = {
   shortlisted: 'Congratulations! You have been shortlisted.',
@@ -26,6 +27,16 @@ export const applyToJob = async (req, res, next) => {
 
     if (!job) {
       return res.status(404).json({ message: 'Job not found' })
+    }
+
+    if (hasDeadlinePassed(job.lastDateToApply)) {
+      if (job.status === 'active') {
+        job.status = 'closed'
+        await job.save()
+      }
+      return res.status(400).json({
+        message: 'The application deadline for this job has passed.',
+      })
     }
 
     if (job.status !== 'active') {

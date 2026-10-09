@@ -51,6 +51,7 @@ const jobSchema = new mongoose.Schema({
 })
  
 jobSchema.index({ status: 1, createdAt: -1 })
+jobSchema.index({ status: 1, lastDateToApply: 1 })
 jobSchema.index({ 'eligibility.branches': 1 })
 // ← NEW: speeds up backlog-based eligibility filtering
 jobSchema.index({ 'eligibility.backlogs': 1 })

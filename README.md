@@ -124,6 +124,16 @@ Create `.env` (optional, Vite proxy handles it in dev):
 cp .env.example .env
 ```
 
+For local development, the frontend uses Vite's `/api` proxy to `http://localhost:5000`.
+For production, set `VITE_API_URL` to the backend API base URL (including `/api`), for example:
+
+```env
+VITE_API_URL=https://api.example.com/api
+```
+
+If frontend and backend share an origin, leave `VITE_API_URL` unset and route `/api` to the backend in the production web server.
+For a separate frontend and backend origin, set backend `CLIENT_URL` to the frontend's public origin so CORS allows the app.
+
 Start the frontend:
 ```bash
 npm run dev
@@ -182,6 +192,15 @@ Login/Register ──► POST /api/auth/login (or /register)
 | GET    | /api/users/students   | Admin + TPO  | Get all students    |
 | GET    | /api/users/:id        | Admin + TPO  | Get single user     |
 | PATCH  | /api/users/:id/status | Admin        | Toggle user status  |
+
+### Previous-Year Questions
+| Method | Endpoint                         | Access     | Description                                      |
+|--------|----------------------------------|------------|--------------------------------------------------|
+| GET    | /api/company-questions           | Private    | Get saved company questions grouped by rounds    |
+| GET    | /api/company-questions/companies | TPO + Admin| Get posted-drive and saved company choices       |
+| POST   | /api/company-questions           | TPO + Admin| Save questions for a company                     |
+| PUT    | /api/company-questions/:id       | TPO + Admin| Update a company's question entry               |
+| DELETE | /api/company-questions/:id       | TPO + Admin| Delete a company's question entry               |
 
 ---
 

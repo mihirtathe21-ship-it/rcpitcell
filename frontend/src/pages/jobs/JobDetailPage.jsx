@@ -13,6 +13,8 @@ import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api'
 import toast from 'react-hot-toast'
+import { getDaysUntilDeadline, isDeadlinePassed } from '../../utils/jobDeadline'
+import CompanyLogo from '../../components/ui/CompanyLogo'
 
 // ─── Eligibility checker ──────────────────────────────────────────────────────
 function checkEligibility(user, job) {
@@ -319,8 +321,8 @@ export default function JobDetailPage() {
   const { complete: profileComplete, missing: missingFields } = isStudent ? checkProfile(user)  : { complete: true, missing: [] }
 
   const deadline       = job.lastDateToApply ? new Date(job.lastDateToApply) : null
-  const daysLeft       = deadline ? Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24)) : null
-  const deadlinePassed = daysLeft !== null && daysLeft <= 0
+  const daysLeft       = getDaysUntilDeadline(job.lastDateToApply)
+  const deadlinePassed = isDeadlinePassed(job.lastDateToApply)
   const jobClosed      = job.status !== 'open' && job.status !== 'active'
 
   // Student cannot apply if: deadline passed OR job closed
@@ -389,9 +391,11 @@ export default function JobDetailPage() {
 
                 {/* Left */}
                 <div className="flex gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-700 font-bold text-2xl flex-shrink-0 shadow-sm">
-                    {job.company?.charAt(0)}
-                  </div>
+                  <CompanyLogo
+                    src={job.logo}
+                    company={job.company}
+                    className="h-16 w-16 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-100 to-blue-200 text-2xl font-bold text-blue-700 shadow-sm"
+                  />
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900 leading-tight">{job.title}</h1>
                     <p className="text-blue-600 font-semibold mt-0.5">{job.company}</p>

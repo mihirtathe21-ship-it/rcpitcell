@@ -1,12 +1,14 @@
 import { Application } from '../models/Application.js'
 import { Job } from '../models/Job.js'
 import { User } from '../models/User.js'
+import { closeExpiredActiveJobs } from '../utils/jobDeadline.js'
 
 // @desc    Get placement analytics summary
 // @route   GET /api/analytics/summary
 // @access  Admin + TPO
 export const getSummary = async (req, res, next) => {
   try {
+    await closeExpiredActiveJobs()
     const [
       totalStudents,
       totalRecruiters,

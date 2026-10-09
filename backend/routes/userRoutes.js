@@ -295,6 +295,51 @@ router.put(
   }
 );
 
+router.get(
+  '/profile/resume/preview',
+  protect,
+  authorize('student'),
+  async (req, res, next) => {
+    try {
+      if (!req.user.resume) {
+        return res.status(404).json({ message: 'No resume is uploaded to your profile.' })
+      }
+
+      let resumeUrl
+      try {
+        resumeUrl = new URL(req.user.resume)
+      } catch {
+        return res.status(404).json({ message: 'The uploaded resume could not be found.' })
+      }
+
+      if (resumeUrl.protocol !== 'https:' || resumeUrl.hostname !== 'res.cloudinary.com') {
+        return res.status(404).json({ message: 'The uploaded resume could not be found.' })
+      }
+
+      const response = await fetch(resumeUrl, { redirect: 'error' })
+      if (!response.ok) {
+        return res.status(502).json({ message: 'The resume could not be loaded from storage.' })
+      }
+
+      const resume = Buffer.from(await response.arrayBuffer())
+      if (resume.subarray(0, 5).toString() !== '%PDF-') {
+        return res.status(502).json({ message: 'The stored resume is not a valid PDF.' })
+      }
+
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline; filename="resume.pdf"',
+        'Content-Length': resume.length,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      })
+      return res.send(resume)
+    } catch (error) {
+      return next(error)
+    }
+  }
+)
+
 // ─────────────────────────────────────────────────────────────
 // GET Single User
 // ─────────────────────────────────────────────────────────────

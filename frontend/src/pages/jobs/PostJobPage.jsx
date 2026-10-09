@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
-  Briefcase, Plus, X, ChevronLeft
+  Briefcase, Plus, X, ChevronLeft, ImagePlus, Building2
 } from 'lucide-react'
 import api from '../../api'
 
@@ -38,6 +38,12 @@ export default function PostJobPage() {
   const [selectedYears, setSelectedYears] = useState([])
   const [skills, setSkills] = useState([])
   const [skillInput, setSkillInput] = useState('')
+  const [companyLogo, setCompanyLogo] = useState(null)
+  const [logoPreview, setLogoPreview] = useState('')
+
+  useEffect(() => () => {
+    if (logoPreview.startsWith('blob:')) URL.revokeObjectURL(logoPreview)
+  }, [logoPreview])
 
   const {
     register,
@@ -76,6 +82,25 @@ export default function PostJobPage() {
     }
   }
 
+  const handleLogoChange = event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Choose a JPG, PNG, or WEBP company logo.')
+      event.target.value = ''
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Company logo must be smaller than 2 MB.')
+      event.target.value = ''
+      return
+    }
+
+    setCompanyLogo(file)
+    setLogoPreview(URL.createObjectURL(file))
+  }
+
   const onSubmit = async (data) => {
     setIsLoading(true)
     try {
@@ -93,7 +118,14 @@ export default function PostJobPage() {
       delete payload.minCGPA
       delete payload.maxBacklogs
 
-      await api.post('/jobs', payload)
+      if (companyLogo) {
+        const formData = new FormData()
+        formData.append('job', JSON.stringify(payload))
+        formData.append('logo', companyLogo)
+        await api.post('/jobs', formData)
+      } else {
+        await api.post('/jobs', payload)
+      }
       toast.success('Drive posted successfully!')
       navigate('/jobs')
     } catch (err) {
@@ -151,6 +183,43 @@ export default function PostJobPage() {
                 {...register('company', { required: true })}
               />
               {errors.company && <p className="text-xs text-red-500 mt-1">Company name is required</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls} htmlFor="company-logo">Company Logo</label>
+            <p className="mt-1 text-xs text-slate-400">Optional · JPG, PNG, or WEBP · up to 2 MB</p>
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+                {logoPreview
+                  ? <img src={logoPreview} alt="Company logo preview" className="h-full w-full object-contain" />
+                  : <Building2 className="h-7 w-7" />}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <label htmlFor="company-logo" className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-300 hover:bg-blue-50">
+                  <ImagePlus className="h-4 w-4 text-blue-600" />
+                  {companyLogo ? 'Change logo' : 'Upload logo'}
+                  <input
+                    id="company-logo"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleLogoChange}
+                    className="sr-only"
+                  />
+                </label>
+                {companyLogo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompanyLogo(null)
+                      setLogoPreview('')
+                    }}
+                    className="text-xs font-semibold text-slate-500 transition hover:text-red-600"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

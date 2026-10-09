@@ -2,13 +2,23 @@ import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   Briefcase, Users, Plus, ChevronRight, TrendingUp,
-  CheckCircle2, Search, Trash2, AlertTriangle, X
+  CheckCircle2, Search, Trash2, AlertTriangle, X, CalendarDays, DollarSign
 } from 'lucide-react'
 import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api'
 import toast from 'react-hot-toast'
 import StudentProfileModal from '../../components/ui/StudentProfileModal'
+import CompanyLogo from '../../components/ui/CompanyLogo'
+import { getDaysUntilDeadline } from '../../utils/jobDeadline'
+
+const formatDriveDate = date => {
+  if (!date) return '—'
+  const parsed = new Date(date)
+  return Number.isNaN(parsed.getTime())
+    ? '—'
+    : parsed.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 const STATUS_STYLE = {
   active:    'bg-emerald-100 text-emerald-700 border border-emerald-200',
@@ -139,25 +149,27 @@ function Home({ jobs, stats, loading }) {
               Post your first →
             </Link>
           </div>
-        ) : jobs.slice(0, 4).map(job => (
-          <div key={job._id} className="flex items-center gap-4 py-3 border-b border-slate-100 last:border-none">
-            <div className="w-9 h-9 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center font-bold text-blue-600 text-sm">
-              {job.company?.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[#1a2744] truncate">{job.title}</p>
-              <p className="text-xs text-slate-400">{job.type} · {job.location}</p>
-            </div>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${STATUS_STYLE[job.status]}`}>
-              {job.status}
-            </span>
-            <Link to={`/jobs/${job._id}/applicants`}
-              className="text-xs text-[#1a2744] hover:text-blue-600 flex items-center gap-1 font-semibold border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-all">
-              <Users className="w-3.5 h-3.5" />
-              View
-            </Link>
+        ) : (
+          <div className="space-y-3">
+            {jobs.slice(0, 4).map(job => {
+              const daysLeft = getDaysUntilDeadline(job.lastDateToApply)
+              const status = job.status === 'active' && daysLeft !== null && daysLeft < 0 ? 'closed' : job.status
+              return (
+                <div key={job._id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3 transition hover:border-blue-100 hover:bg-blue-50/30">
+                  <Link to={`/jobs/${job._id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                    <CompanyLogo src={job.logo} company={job.company} className="h-10 w-10 shrink-0 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-semibold text-slate-800">{job.company}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-slate-500">{job.title} · {formatDriveDate(job.driveDate)}</span>
+                    </span>
+                  </Link>
+                  <Link to={`/jobs/${job._id}/applicants`} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-blue-700"><Users className="h-3.5 w-3.5 text-slate-400" />{job.applicantCount || 0}</Link>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${STATUS_STYLE[status] || STATUS_STYLE.closed}`}>{status}</span>
+                </div>
+              )
+            })}
           </div>
-        ))}
+        )}
       </div>
     </div>
   )
@@ -220,52 +232,46 @@ function MyDrives({ jobs, loading, onDelete }) {
         />
       </div>
 
-      <div className="space-y-3">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
-          [...Array(4)].map((_, i) => (
-            <div key={i} className="h-20 bg-slate-100 rounded-2xl animate-pulse" />
-          ))
+          <div className="space-y-3 p-5">{[...Array(5)].map((_, i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <Briefcase className="w-6 h-6 text-slate-300" />
-            </div>
-            <p className="text-slate-400 text-sm font-medium">No drives found</p>
+          <div className="px-5 py-14 text-center"><Briefcase className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 text-sm font-medium text-slate-700">No drives found</p><p className="mt-1 text-xs text-slate-500">Try another search or post a new drive.</p></div>
+        ) : (
+          <div className="space-y-3 p-4">
+            {filtered.map(job => {
+              const daysLeft = getDaysUntilDeadline(job.lastDateToApply)
+              const status = job.status === 'active' && daysLeft !== null && daysLeft < 0 ? 'closed' : job.status
+              return (
+                <article key={job._id} className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-200 hover:shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <Link to={`/jobs/${job._id}`} className="flex min-w-0 items-center gap-3">
+                      <CompanyLogo src={job.logo} company={job.company} className="h-11 w-11 shrink-0 rounded-xl border border-blue-100 bg-blue-50 text-sm font-bold text-blue-600" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-slate-800">{job.company}</span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-600">{job.title}</span>
+                        <span className="mt-1 block truncate text-[11px] text-slate-500">{job.location || 'On campus'} · {(job.type || 'full-time').replace('-', ' ')}</span>
+                      </span>
+                    </Link>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${STATUS_STYLE[status] || STATUS_STYLE.closed}`}>{status}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+                      <span>{job.package || job.stipend || 'Package not listed'}</span>
+                      <span>Drive: {formatDriveDate(job.driveDate)}</span>
+                      <span className={daysLeft !== null && daysLeft < 0 ? 'font-semibold text-rose-600' : ''}>Deadline: {job.lastDateToApply ? formatDriveDate(job.lastDateToApply) : 'Not specified'}</span>
+                      <Link to={`/jobs/${job._id}/applicants`} className="inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-blue-700"><Users className="h-3.5 w-3.5" />{job.applicantCount || 0} applicants</Link>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link to={`/jobs/${job._id}`} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">View</Link>
+                      <button type="button" onClick={() => setConfirmId(job._id)} aria-label={`Delete ${job.title} drive`} title="Delete drive" className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
           </div>
-        ) : filtered.map(job => (
-          <div key={job._id}
-            className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm hover:border-slate-300 hover:shadow-md transition-all">
-            <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center font-bold text-blue-600 shrink-0">
-              {job.company?.charAt(0)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-semibold text-[#1a2744] text-sm">{job.title}</p>
-                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${STATUS_STYLE[job.status]}`}>
-                  {job.status}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">{job.company} · {job.type} · {job.location}</p>
-              {job.package && (
-                <p className="text-xs text-emerald-600 font-semibold mt-0.5">{job.package}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link to={`/jobs/${job._id}/applicants`}
-                className="flex items-center gap-1.5 text-xs text-[#1a2744] font-semibold border border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300 px-3 py-1.5 rounded-lg transition-all">
-                <Users className="w-3.5 h-3.5" />
-                Applicants
-              </Link>
-              <button
-                onClick={() => setConfirmId(job._id)}
-                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-lg transition-all"
-                title="Delete drive"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
+        )}
       </div>
     </div>
   )
