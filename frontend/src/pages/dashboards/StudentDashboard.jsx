@@ -11,6 +11,7 @@ import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../api'
 import CompanyLogo from '../../components/ui/CompanyLogo'
+import PlacementChatbot from '../../components/ui/PlacementChatbot'
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '')
 const FILE_ORIGIN = API_ORIGIN || (import.meta.env.DEV ? 'http://localhost:5000' : '')
@@ -568,6 +569,7 @@ export default function StudentDashboard() {
           </footer>
         </main>
       </div>
+      <PlacementChatbot />
     </DashboardLayout>
   )
 }

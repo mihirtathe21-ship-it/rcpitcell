@@ -91,7 +91,17 @@ MONGO_URI=mongodb://localhost:27017/placement_db
 JWT_SECRET=your_super_secret_jwt_key_change_this
 JWT_EXPIRES_IN=7d
 NODE_ENV=development
+GEMINI_API_KEY=your_gemini_api_key
+# Optional: defaults to gemini-2.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 ```
+
+The student dashboard placement assistant uses `GEMINI_API_KEY` on the backend.
+Keep this key only in `backend/.env` or your production secret manager; never
+put it in a `VITE_` frontend variable. It retrieves placement-drive details and
+company interview questions from MongoDB, plus anonymized company-level offer
+counts where at least three students were selected. Student profiles, resumes,
+individual application records, and private notes are not sent to Gemini.
 
 Seed Admin & TPO users:
 ```bash

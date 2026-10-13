@@ -17,6 +17,7 @@ import analyticsRoutes from './routes/Analyticsroutes.js'
 import notificationRoutes from './routes/Notificationroutes.js'
 import studentRoutes from './routes/studentRoutes.js'
 import companyQuestionRoutes from './routes/companyQuestionRoutes.js'
+import chatbotRoutes from './routes/chatbotRoutes.js'
 
 import errorHandler from './middleware/errorHandler.js'
 
@@ -94,6 +95,7 @@ app.use('/api/analytics', analyticsRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/students', studentRoutes)
 app.use('/api/company-questions', companyQuestionRoutes)
+app.use('/api/chatbot', chatbotRoutes)
 
 // Health route
 app.get('/', (req, res) => {
